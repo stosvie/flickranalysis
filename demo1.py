@@ -1,12 +1,14 @@
 import datetime
 from datetime import date, timedelta
 import time
+import timeit
 
 from urllib import parse
 
 import flickrapi
 # from pandas.io.json import json_normalize
 import pandas as pd
+import numpy as np
 import sqlalchemy as sa
 import webbrowser
 
@@ -15,25 +17,85 @@ def calldb(data, table_name):
     connecting_string = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:woo.database.windows.net,1433;Database=BYWS;Uid=boss;Pwd=s7#3QzOsB$J*^v3;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;'
     params = parse.quote_plus(connecting_string)
 
-    engine = sa.create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
+    engine = sa.create_engine("mssql+pyodbc:///?odbc_connect=%s" % params, fast_executemany=True)
     connection = engine.connect()
-    # result = connection.execute(strSelect)
     data.to_sql(table_name, con=engine, if_exists='append', chunksize=1000)
-
-    # f = pd.read_sql(strSelect, engine)
-
     # connection.close()
 
-def get_saved_favs(pid):
+def delete_stats_from_date(livedate):
     connecting_string = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:woo.database.windows.net,1433;Database=BYWS;Uid=boss;Pwd=s7#3QzOsB$J*^v3;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;'
     params = parse.quote_plus(connecting_string)
 
     engine = sa.create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
     connection = engine.connect()
-    query = "SELECT * FROM dbo.photo_faves WHERE photo_id = '" + str(pid) + "'"
-    df = pd.read_sql_query(query, engine)  # Finally, importing the data into DataFrame df
+    query = "\
+                    delete from dbo.photo_stats where statdate >= '{}';\
+                    delete from dbo.stats_status where statdate >= '{}';".format(livedate.date(), livedate.date())
 
-    ndf = df[df['favedate'] > str(1498608604)]
+    trans = connection.begin()
+    try:
+        r1 = connection.execute(query)
+        print(r1)
+        trans.commit()
+    except:
+        trans.rollback()
+        raise
+    finally:
+        connection.close()
+
+def mark_date_complete(loaddate):
+    connecting_string = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:woo.database.windows.net,1433;Database=BYWS;Uid=boss;Pwd=s7#3QzOsB$J*^v3;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;'
+    params = parse.quote_plus(connecting_string)
+
+    engine = sa.create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
+    connection = engine.connect()
+
+    if loaddate == date.today():
+        new_state = 'live'
+    else:
+        new_state = 'frozen'
+
+    query = "insert into dbo.stats_status (statdate,stats_state)\
+        VALUES ('{}','{}')".format(loaddate, new_state)
+
+    trans = connection.begin()
+    try:
+        r1 = connection.execute(query)
+        print(r1)
+        trans.commit()
+    except:
+        trans.rollback()
+        raise
+    finally:
+        connection.close()
+
+def refresh_stats():
+    dlist = get_saved_stats()
+    get_stats(dlist, dlist[0])
+
+def get_saved_stats():
+    connecting_string = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:woo.database.windows.net,1433;Database=BYWS;Uid=boss;Pwd=s7#3QzOsB$J*^v3;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;'
+    params = parse.quote_plus(connecting_string)
+
+    engine = sa.create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
+    connection = engine.connect()
+    # query = "SELECT * FROM dbo.photo_faves WHERE photo_id = '" + str(pid) + "'"
+    query = "select max(statdate)  as stats_date,stats_state from dbo.stats_status group by stats_state \
+            union select  cast(getdate() as date) as  statdate, 'today' as stats_state"
+
+    #union select  '2020-02-14' as  statdate, 'live' as stats_state\
+    df = pd.read_sql_query(query, engine)  # Finally, importing the data into DataFrame df
+    livedate = df[df.stats_state.eq('live')]['stats_date'][1]
+
+    #query = "delete from dbo.photo_stats where statdate >= {}".format(livedate.date())
+    #delete_stats_from_date(livedate.date())
+
+    foo = df[df.stats_state.eq('frozen')]['stats_date']
+    t = date.today()
+    bar = pd.date_range(start=livedate.date(), end=date.today()).tolist()
+
+    return bar
+    # ndf = df[df['favedate'] > str(1498608604)]
 
 def get_photo_batch(fobj, userid, page_to_get):
     # photos = fobj.photos.search(user_id=userid, per_page='30', extras='views')
@@ -88,11 +150,11 @@ def get_all_favs(fobj, photoid):
     #df_faves = pd.DataFrame(faves['photo']['person'])
 
 def get_all():
-        r = get_photo_batch(flickr2, myuserid, 1)
-        while r[0] < r[1]:
-                r = get_photo_batch(flickr2, myuserid, r[0] + 1)
+    r = get_photo_batch(flickr2, myuserid, 1)
+    while r[0] < r[1]:
+        r = get_photo_batch(flickr2, myuserid, r[0] + 1)
 
-        print('Done.')
+    print('Done.')
 
 def stat_helper(dt,pg):
     popular = flickr2.stats.getPopularPhotos(date=dt, per_page=100, page=pg)
@@ -102,10 +164,53 @@ def stat_helper(dt,pg):
     for x in popular['photos']['photo']:
         df_stats = df_stats.append(x['stats'], ignore_index=1)
     df_final = df_final.join(df_stats)
-    return df_final, popular['photos']['pages'] , popular['photos']['page']
+    return df_final, popular['photos']['pages'], popular['photos']['page']
 
-def get_stats():
-    datelist = pd.date_range(date.today() - timedelta(29), periods=30).tolist()
+def domains_helper(dt,pg):
+    popular = flickr2.stats.getPhotoDomains(date=dt, per_page=100, page=pg)
+    df_domains = pd.DataFrame(popular['domains']['domain'])
+    final_outer = pd.DataFrame()
+    for dom in popular['domains']['domain']:
+        refs = flickr2.stats.getPhotoReferrers(date=dt, domain=dom['name'], per_page=100, page=1)
+        df_refs = pd.DataFrame(refs['domain']['referrer'])
+        dt_domain = [dom['name'] for i in range(df_refs.index.size)]
+        df_refs['domain'] = dt_domain
+        final_df = df_refs
+        while refs['domain']['pages'] - refs['domain']['page'] > 0:
+            refs = flickr2.stats.getPhotoReferrers(date=dt, domain=dom['name'], per_page=100, page=refs['domain']['page']+1)
+            df_refs = pd.DataFrame(refs['domain']['referrer'])
+            dt_domain = [dom['name'] for i in range(df_refs.index.size)]
+            df_refs['domain'] = dt_domain
+            final_df = final_df.append(df_refs)
+
+        final_outer = final_outer.append(final_df)
+
+    return final_outer, popular['domains']['pages'], popular['domains']['page']
+
+def get_domains(datelist, last_livedate):
+
+    for d in datelist:
+        res = domains_helper(d, 1)
+        final_df = res[0]
+
+        while res[1] - res[2] > 0:
+            res = domains_helper(d, res[2]+1)
+            final_df = final_df.append(res[0])
+
+        dt_list = [d for i in range(final_df.index.size)]
+        final_df['statdate'] = dt_list
+
+        ### TODO this nees to be a single tranaction!
+        calldb(final_df, 'photo_stats_domains')
+        #mark_date_complete(d)
+        print('nxt date')
+
+    print('Done')
+
+def get_stats(datelist, last_livedate):
+    #datelist = pd.date_range(date.today() - timedelta(29), periods=30).tolist()
+    #delete from lastdate onward
+    delete_stats_from_date(last_livedate)
     for d in datelist:
         ts = d.value
         dt = datetime.datetime(d.year, d.month, d.day)
@@ -116,27 +221,49 @@ def get_stats():
             res = stat_helper(dt, res[2]+1)
             final_df = final_df.append(res[0])
 
-
         dt_list = [dt for i in range(final_df.index.size)]
         final_df['statdate'] = dt_list
 
+        ### TODO this nees to be a single tranaction!
         calldb(final_df, 'photo_stats')
+        mark_date_complete(d)
         print('nxt date')
 
     print('Done')
 
+def ttest():
+    #greekpeaks = flickr2.photos.getInfo(photo_id=49489963497, format='parsed-json')
+    #photos = flickr2.people.getPhotos(user_id=myuserid, page=1)
+    #df2 = pd.DataFrame(photos['photos']['photo'])
+
+
+    connecting_string = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:woo.database.windows.net,1433;Database=BYWS;Uid=boss;Pwd=s7#3QzOsB$J*^v3;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;'
+    params = parse.quote_plus(connecting_string)
+
+    engine = sa.create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
+    connection = engine.connect()
+    query = "SELECT * FROM dbo.photo_details"
+    # query = "select max(statdate)  as stats_date,stats_state from dbo.stats_status group by stats_state union select  cast(getdate() as date) as  statdate, 'today' as stats_state"
+
+    df = pd.read_sql(query, engine)  # Finally, importing the data into DataFrame df
+    return df
+
 def tests():
     #sets = flickr2.photosets.getList(user_id='58051209@N00')
     photos = flickr2.people.getPhotos(user_id=myuserid, page=1)
-    # dt = datetime.datetime(2020, 2, 14, 10, 00)
-    # x = time.mktime(dt.timetuple())
-    # min_date = flickr2.photos.recentlyUpdated(min_date=x)
+    df2 = pd.DataFrame(photos['photos']['photo'])
+    # calldb(df2,'xxx')
+    dt = datetime.datetime(2020, 2, 10, 7, 0)
+    x = time.mktime(dt.timetuple())
+
+    min_date = flickr2.photos.recentlyUpdated(min_date='2020-02-16 08:00:00')
     # try:
-    #    popular = flickr2.stats.getPopularPhotos(date='2019-02-13', per_page=100)
+    #    popular = flickr2.stats.getPopularPhotos(date='2019-02-15', per_page=100)
     # except flickrapi.exceptions.FlickrError:
     #    print(flickrapi.exceptions.FlickrError)
     # allfavs = get_all_favs(flickr2,  30507209051)
 
+    #'1581440149'
     # zz = get_saved_favs(30507209051)
     for f in photos['photos']['photo']:
         photoid = f['id']
@@ -195,6 +322,13 @@ if not flickr2.token_valid(perms='read'):
 #       groups from getAllContexts
 #       * recentlyUpdate also need oAuth
 
+start = time.time()
+#refresh_stats()
+#dlist = get_saved_stats()
+#get_domains(dlist, dlist[0])
+print(f'Time: {time.time() - start}')
+
+#get_saved_favs(8889)
 print('Done.')
 
 
