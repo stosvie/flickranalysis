@@ -108,20 +108,36 @@ def test_photos(fobj, myuserid):
 
     df2 = pd.DataFrame(photos['photos']['photo'])
     df_dates = pd.DataFrame()
-    df_comments = pd.DataFrame()
+    df_url = pd.DataFrame()
     for f in photos['photos']['photo']:
-        theid = [f['id']]
-        i1 = flickr2.photos.getInfo(photo_id=f['id'], format='parsed-json')
+        photoid = f['id']
+        phototitle = f['title']
+
+
+        i1 = flickr2.photos.getInfo(photo_id=photoid, format='parsed-json')
         df_tags = pd.DataFrame(i1['photo']['tags']['tag'])
-        df_dates = df_dates.append(pd.DataFrame.from_dict(i1['photo']['dates'], orient="index").T)
+        #photoids = ['photoid'] * range(df_tags.index.size)
+        photoids = [photoid for i in range(df_tags.index.size)]
+        df_tags['photo_id'] = photoids
+
+        # df_dates = pd.DataFrame(i1['photo'])['dates'] # ['posted']
+        # pd.DataFrame(i1[('id','photo')])['dates']  # ['posted']
+        dfx = pd.DataFrame(i1['photo'])
+        df_dates = df_dates.append(dfx.loc[['lastupdate'], ['id', 'dates']].append(dfx.loc[['posted', 'taken'], ['id', 'dates']]))
+        # df_alldates = df_alldates.append(df_dates)
+        # df_url = pd.DataFrame(i1['photo'])['urls']['url']
+        df_url = df_url.append(pd.DataFrame(pd.DataFrame(i1['photo'])['urls']['url']))
+        # df_allurls = df_allurls.append(df_url)
+
+        #df_dates = df_dates.append(pd.DataFrame.from_dict(i1['photo']['dates'], orient="index").T)
         #df_dates['photoid'] = theid
         #df_dates = normalize(i1['photo'],['dates'])
         #df_comments = pd.DataFrame(i1['photo']['comments'])
-        df_comments = df_comments.append(pd.DataFrame.from_dict(i1['photo']['comments'], orient="index").T)
+        #df_comments = df_comments.append(pd.DataFrame.from_dict(i1['photo']['comments'], orient="index").T)
 
     print(df_dates.shape)
-    pd.concat([df2, df_dates], axis=1)
-    #df2 = df2.join(df_dates.shape)
+    # pd.concat([df2, df_dates], axis=1)
+    # df2 = df2.join(df_dates.shape)
 
 
 def get_photo_batch(fobj, userid, page_to_get):
@@ -129,7 +145,7 @@ def get_photo_batch(fobj, userid, page_to_get):
     photos = flickr2.people.getPhotos(user_id=myuserid, page=page_to_get)
 
     df2 = pd.DataFrame(photos['photos']['photo'])
-    dates = normalize(photos['photos']['photo'],'dates')
+    #dates = normalize(photos['photos']['photo'],'dates')
 
     calldb(df2,'photo_details')
     for f in photos['photos']['photo']:
