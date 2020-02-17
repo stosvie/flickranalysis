@@ -99,11 +99,38 @@ def get_saved_stats():
     return bar
     # ndf = df[df['favedate'] > str(1498608604)]
 
+
+
+
+def test_photos(fobj, myuserid):
+
+    photos = flickr2.people.getPhotos(user_id=myuserid, per_page=100, page=1)
+
+    df2 = pd.DataFrame(photos['photos']['photo'])
+    df_dates = pd.DataFrame()
+    df_comments = pd.DataFrame()
+    for f in photos['photos']['photo']:
+        theid = [f['id']]
+        i1 = flickr2.photos.getInfo(photo_id=f['id'], format='parsed-json')
+        df_tags = pd.DataFrame(i1['photo']['tags']['tag'])
+        df_dates = df_dates.append(pd.DataFrame.from_dict(i1['photo']['dates'], orient="index").T)
+        #df_dates['photoid'] = theid
+        #df_dates = normalize(i1['photo'],['dates'])
+        #df_comments = pd.DataFrame(i1['photo']['comments'])
+        df_comments = df_comments.append(pd.DataFrame.from_dict(i1['photo']['comments'], orient="index").T)
+
+    print(df_dates.shape)
+    pd.concat([df2, df_dates], axis=1)
+    #df2 = df2.join(df_dates.shape)
+
+
 def get_photo_batch(fobj, userid, page_to_get):
     # photos = fobj.photos.search(user_id=userid, per_page='30', extras='views')
     photos = flickr2.people.getPhotos(user_id=myuserid, page=page_to_get)
 
     df2 = pd.DataFrame(photos['photos']['photo'])
+    dates = normalize(photos['photos']['photo'],'dates')
+
     calldb(df2,'photo_details')
     for f in photos['photos']['photo']:
             photoid = f['id']
@@ -141,12 +168,7 @@ def get_all_favs(fobj, photoid):
         df_faves = df_faves.append(df_next)
     id_list = [photoid for i in range(df_faves.index.size)]
     df_faves['photo_id'] = id_list
-    try:
-        # fname = "./"+photoid+"favs.json"
-        with open('x.json', 'w') as jf:
-            jf.write(df_faves.to_json(orient='records', lines=True))
-    except:
-        print("Error.")
+
 
     return (countfaves, df_faves)
     #df_faves = pd.DataFrame(faves['photo']['person'])
@@ -331,6 +353,7 @@ if not flickr2.token_valid(perms='read'):
     # Open a browser at the authentication URL. Do this however
     # you want, as long as the user visits that URL.
     authorize_url = flickr2.auth_url(perms='read')
+    print(authorize_url)
     webbrowser.open_new_tab(authorize_url)
 
     # Get the verifier code from the user. Do this however you
@@ -353,9 +376,11 @@ start = time.time()
 #dt = date.today()
 #res = call_func(flickr2.stats.getPopularPhotos, 'photos', 'photo', ['id', 'title'], 'stats', per_page=100, date=dt)
 
-refresh_stats()
+#refresh_stats()
 #dlist = get_saved_stats()
 #get_domains(dlist, dlist[0])
+
+test_photos(flickr2,myuserid)
 print(f'Time: {time.time() - start}')
 
 #get_saved_favs(8889)
