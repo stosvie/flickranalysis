@@ -29,8 +29,9 @@ def delete_stats_from_date(livedate):
     engine = sa.create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
     connection = engine.connect()
     query = "\
+                    delete from dbo.photo_stats_domains where statdate >= '{}';\
                     delete from dbo.photo_stats where statdate >= '{}';\
-                    delete from dbo.stats_status where statdate >= '{}';".format(livedate.date(), livedate.date())
+                    delete from dbo.stats_status where statdate >= '{}';".format(livedate.date(), livedate.date(),livedate.date())
 
     trans = connection.begin()
     try:
@@ -72,6 +73,7 @@ def mark_date_complete(loaddate):
 def refresh_stats():
     dlist = get_saved_stats()
     get_stats(dlist, dlist[0])
+    get_domains(dlist, dlist[0])
 
 def get_saved_stats():
     connecting_string = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:woo.database.windows.net,1433;Database=BYWS;Uid=boss;Pwd=s7#3QzOsB$J*^v3;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;'
@@ -156,6 +158,30 @@ def get_all():
 
     print('Done.')
 
+def get_stats(datelist, last_livedate):
+    #datelist = pd.date_range(date.today() - timedelta(29), periods=30).tolist()
+    #delete from lastdate onward
+    delete_stats_from_date(last_livedate)
+    for d in datelist:
+        ts = d.value
+        dt = datetime.datetime(d.year, d.month, d.day)
+        res = stat_helper(dt, 1)
+        final_df = res[0]
+
+        while res[1] - res[2] > 0:
+            res = stat_helper(dt, res[2]+1)
+            final_df = final_df.append(res[0])
+
+        dt_list = [dt for i in range(final_df.index.size)]
+        final_df['statdate'] = dt_list
+
+        ### TODO this nees to be a single tranaction!
+        calldb(final_df, 'photo_stats')
+        mark_date_complete(d)
+        print('nxt date')
+
+    print('Done')
+
 def stat_helper(dt,pg):
     popular = flickr2.stats.getPopularPhotos(date=dt, per_page=100, page=pg)
     df_popular = pd.DataFrame(popular['photos']['photo'])
@@ -207,29 +233,7 @@ def get_domains(datelist, last_livedate):
 
     print('Done')
 
-def get_stats(datelist, last_livedate):
-    #datelist = pd.date_range(date.today() - timedelta(29), periods=30).tolist()
-    #delete from lastdate onward
-    delete_stats_from_date(last_livedate)
-    for d in datelist:
-        ts = d.value
-        dt = datetime.datetime(d.year, d.month, d.day)
-        res = stat_helper(dt, 1)
-        final_df = res[0]
 
-        while res[1] - res[2] > 0:
-            res = stat_helper(dt, res[2]+1)
-            final_df = final_df.append(res[0])
-
-        dt_list = [dt for i in range(final_df.index.size)]
-        final_df['statdate'] = dt_list
-
-        ### TODO this nees to be a single tranaction!
-        calldb(final_df, 'photo_stats')
-        mark_date_complete(d)
-        print('nxt date')
-
-    print('Done')
 
 def ttest():
     #greekpeaks = flickr2.photos.getInfo(photo_id=49489963497, format='parsed-json')
@@ -282,6 +286,29 @@ def tests():
     # for photo in set[1:4]:
     #     print ('Hello')
 
+def normalize(ls, normalize_attr):
+    df_norm = pd.DataFrame()
+    for x in ls:
+        df_norm = df_norm.append(x[normalize_attr], ignore_index=1)
+    return df_norm
+
+
+def call_func(funcname, top, it, retain_cols, normalize_attr, **kwargs):
+    rs = funcname(**kwargs)
+    df_rs = pd.DataFrame(rs[top][it])
+    df_stats = normalize(rs[top][it], normalize_attr)
+
+    while rs[top]['pages'] - rs[top]['page'] > 0:
+        rs = funcname(**kwargs, page=rs[top]['page']+1)
+        df_rs = pd.DataFrame(rs[top][it]).append(df_rs)
+        df_stats = df_stats.append(normalize(rs[top][it], normalize_attr))
+
+    df_final = df_rs[retain_cols]
+    df_final = df_final.join(df_stats)
+
+    return df_final
+
+
 
 ### These need to be moved to the future flickrana class
 api_key = u'4a69280a31fc96c26e7d218c3a8cf345'
@@ -323,7 +350,10 @@ if not flickr2.token_valid(perms='read'):
 #       * recentlyUpdate also need oAuth
 
 start = time.time()
-#refresh_stats()
+#dt = date.today()
+#res = call_func(flickr2.stats.getPopularPhotos, 'photos', 'photo', ['id', 'title'], 'stats', per_page=100, date=dt)
+
+refresh_stats()
 #dlist = get_saved_stats()
 #get_domains(dlist, dlist[0])
 print(f'Time: {time.time() - start}')

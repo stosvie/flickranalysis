@@ -30,6 +30,8 @@ where raw like '%drone%'
 group by t.photo_id
 order by 3 desc
 
+select min (statdate) from dbo.photo_stats
+
 
 
 
