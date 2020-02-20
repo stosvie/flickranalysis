@@ -230,6 +230,44 @@ def stat_helper(dt,pg):
     df_final = df_final.join(df_stats)
     return df_final, popular['photos']['pages'], popular['photos']['page']
 
+
+def _domains_helper(dom_func, referrers_func, dt, pg):
+    popular = dom_func(date=dt, per_page=100, page=pg)
+    final_outer = pd.DataFrame()
+    if int( popular['domains']['pages']) > 0:
+        df_domains = pd.DataFrame(popular['domains']['domain'])
+
+        for dom in popular['domains']['domain']:
+            refs = referrers_func(date=dt, domain=dom['name'], per_page=100, page=1)
+            df_refs = pd.DataFrame(refs['domain']['referrer'])
+            dt_domain = [dom['name'] for i in range(df_refs.index.size)]
+            df_refs['domain'] = dt_domain
+            final_df = df_refs
+            while refs['domain']['pages'] - refs['domain']['page'] > 0:
+                refs = referrers_func(date=dt, domain=dom['name'], per_page=100, page=refs['domain']['page']+1)
+                df_refs = pd.DataFrame(refs['domain']['referrer'])
+                dt_domain = [dom['name'] for i in range(df_refs.index.size)]
+                df_refs['domain'] = dt_domain
+                final_df = final_df.append(df_refs)
+
+            final_outer = final_outer.append(final_df)
+
+    return final_outer, popular['domains']['pages'], popular['domains']['page']
+
+def _get_domains(dom_func, referrers_func, datelist, last_livedate):
+    for d in datelist:
+        res = _domains_helper(dom_func, referrers_func, d, 1)
+        final_df = res[0]
+
+        while res[1] - res[2] > 0:
+            res = _domains_helper(dom_func, referrers_func, d, res[2] + 1)
+            final_df = final_df.append(res[0])
+
+        dt_list = [d for i in range(final_df.index.size)]
+        final_df['statdate'] = dt_list
+        return final_df
+
+
 def domains_helper(dt,pg):
     popular = flickr2.stats.getPhotoDomains(date=dt, per_page=100, page=pg)
     df_domains = pd.DataFrame(popular['domains']['domain'])
@@ -392,11 +430,26 @@ start = time.time()
 #dt = date.today()
 #res = call_func(flickr2.stats.getPopularPhotos, 'photos', 'photo', ['id', 'title'], 'stats', per_page=100, date=dt)
 
-#refresh_stats()
+
+
+# datelist = pd.date_range(date.today() - timedelta(1), periods=1).tolist()
+
+# getPhotoStats or getPopularPhotos
+# df = _get_domains(flickr2.stats.getPhotoDomains, flickr2.stats.getPhotoReferrers, datelist, date.today())
+# l = flickr.photosets.getList user_id
+# for all in l
+#    getPhotosetStats
+# df1 = _get_domains(flickr2.stats.getPhotosetDomains, flickr2.stats.getPhotosetReferrers, datelist, date.today())
+
+# next = flickr.collections.getTree(0)
+#    if flickr.collections.getTree(next)..:
+# df2 = _get_domains(flickr2.stats.getCollectionDomains, flickr2.stats.getCollectionReferrers, datelist, date.today())
+
+refresh_stats()
 #dlist = get_saved_stats()
 #get_domains(dlist, dlist[0])
 
-test_photos(flickr2,myuserid)
+# test_photos(flickr2,myuserid)
 print(f'Time: {time.time() - start}')
 
 #get_saved_favs(8889)
