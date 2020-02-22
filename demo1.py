@@ -36,7 +36,7 @@ def delete_stats_from_date(livedate):
     trans = connection.begin()
     try:
         r1 = connection.execute(query)
-        print(r1)
+        # print(r1)
         trans.commit()
     except:
         trans.rollback()
@@ -75,6 +75,9 @@ def refresh_stats():
     get_stats(dlist, dlist[0])
     get_domains(dlist, dlist[0])
 
+
+
+
 def get_saved_stats():
     connecting_string = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:woo.database.windows.net,1433;Database=BYWS;Uid=boss;Pwd=s7#3QzOsB$J*^v3;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;'
     params = parse.quote_plus(connecting_string)
@@ -100,7 +103,117 @@ def get_saved_stats():
     # ndf = df[df['favedate'] > str(1498608604)]
 
 
+def get_photo_stats(dt):
+    popular = flickr2.stats.getPopularPhotos(date=dt, per_page=100, page=0)
+    df_popular = pd.DataFrame(popular['photos']['photo'])
 
+    while popular['photos']['pages'] - popular['photos']['page'] > 0:
+        popular = flickr2.stats.getPopularPhotos(date=dt, per_page=100, page=popular['photos']['page']+1)
+        df_popular = df_popular.append(pd.DataFrame(popular['photos']['photo']))
+
+    df_popular = df_popular[['id', 'title', 'stats']]
+    df_stats = pd.DataFrame(df_popular['stats'].values.tolist())
+
+    df_popular['views'] = df_stats['views']
+    df_popular['favorites'] = df_stats['favorites']
+    df_popular['comments'] = df_stats['comments']
+    df_popular['total_views'] = df_stats['total_views']
+    df_popular['total_favorites'] = df_stats['total_favorites']
+    df_popular['total_comments'] = df_stats['total_comments']
+    df_popular.drop('stats', axis=1, inplace=True)
+
+    photo_domain_stats = _get_domains(flickr2.stats.getPhotoDomains, flickr2.stats.getPhotoReferrers, pd.date_range(dt, periods=1).tolist(), None)
+    print(df_popular)
+    return (df_popular, photo_domain_stats )
+
+def get_set_stats(dt):
+
+    photosets = flickr2.photosets.getList(user_id=myuserid, per_page=100, page=1)
+    df_sets = pd.DataFrame(photosets['photosets']['photoset'])
+    while photosets['photosets']['pages'] - photosets['photosets']['page'] > 0:
+        photosets = flickr2.people.photosetsGetList(user_id=myuserid, per_page=100, page=photosets['photossets']['page']+1)
+        df_sets = df_sets.append(pd.DataFrame(photosets['photosets']['photoset']))
+
+    ## drop unecessary columns
+    df_sets = df_sets.drop(['secret', 'server', 'farm', 'primary'], 1)
+
+    ## copy out description and title to normalize
+    titles = [i['_content'] for i in df_sets['title'].values]
+    descriptions = [i['_content'] for i in df_sets['description'].values]
+    df_sets = df_sets.drop(['title', 'description'], 1)
+    df_sets['title'] = pd.Series(titles)
+    df_sets['description'] = pd.Series(descriptions)
+
+    df_setstats = pd.DataFrame()
+    for setid in df_sets['id']:
+        ss = flickr2.stats.getPhotosetStats(photoset_id=setid, date=dt)
+        df_setstats = df_setstats.append(pd.DataFrame([ {'date': dt, 'id': setid, 'views': ss['stats']['views'], 'comments': ss['stats']['comments']}]))
+
+    sets_domain_stats = _get_domains(flickr2.stats.getPhotosetDomains, flickr2.stats.getPhotosetReferrers, pd.date_range(dt, periods=1).tolist(), None)
+    #df_sets['views'] = df_setstats['views']
+    #df_sets['comments'] = df_setstats['comments']
+    # df_sets= df_sets.join(df_setstats, on=['id'])
+    print(df_setstats)
+    return (df_sets, sets_domain_stats)
+
+def parse_col_tree(colid,df_cols):
+    col_root = flickr2.collections.getTree(user_id=myuserid, collection_id=colid)
+    df_cols = df_cols.append(pd.DataFrame(col_root['collections']['collection']))
+
+    for col in col_root['collections']['collection']:
+        if 'collection' in col:
+            for cn in col['collection']:
+                df_cols = parse_col_tree(cn['id'], df_cols)
+
+    return df_cols
+
+def get_collection_stats(dt):
+    df_cols = pd.DataFrame()
+    df_cols = parse_col_tree(0, df_cols)
+
+    ## drop unecessary columns
+    df_cols = df_cols[['id', 'title']]
+
+    for colid in df_cols['id']:
+        try:
+            cs = flickr2.stats.getCollectionStats(collection_id=colid, date=dt)
+        except flickrapi.exceptions.FlickrError:
+            print(flickrapi.exceptions.FlickrError)
+        #df_setstats = df_setstats.append(pd.DataFrame([ {'date': dt, 'id': setid, 'views': ss['stats']['views'], 'comments': ss['stats']['comments']}]))
+
+    cols_domain_stats = _get_domains(flickr2.stats.getCollectionDomains, flickr2.stats.getCollectionReferrers, pd.date_range(dt, periods=1).tolist(), None)
+    print(df_cols)
+    return (df_cols, cols_domain_stats)
+
+def get_stream_stats(dt):
+
+    stream = flickr2.stats.getPhotostreamStats(date=dt)
+    df_streams = pd.DataFrame([{ 'date': dt, 'views': stream['stats']['views']}])
+
+    stream_domain_stats = _get_domains(flickr2.stats.getPhotostreamDomains, flickr2.stats.getPhotostreamReferrers, pd.date_range(dt, periods=1).tolist(), None)
+    print(stream_domain_stats)
+    return (df_streams, stream_domain_stats)
+
+def get_totals_stats(dt):
+    totals = flickr2.stats.getTotalViews(date=dt)
+    df_totals = pd.DataFrame([{'date': dt,
+                                    'total': totals['stats']['total']['views'],
+                                    'photos': totals['stats']['photos']['views'],
+                                    'photostream': totals['stats']['photostream']['views'],
+                                    'sets': totals['stats']['sets']['views'],
+                                    'galleries': totals['stats']['galleries']['views'],
+                                    'collections': totals['stats']['collections']['views']
+                                }])
+    print(df_totals)
+    return df_totals
+
+def get_all_stats(dt):
+    df_photo_stats = get_photo_stats(dt)
+    df_totals = get_totals_stats(dt)
+    df_streams = get_stream_stats(dt)
+    df_sets = get_set_stats(dt)
+    df_cols = get_collection_stats(dt)
+    print('retrieved all stats')
 
 def test_photos(fobj, myuserid):
 
@@ -436,6 +549,7 @@ start = time.time()
 
 # getPhotoStats or getPopularPhotos
 # df = _get_domains(flickr2.stats.getPhotoDomains, flickr2.stats.getPhotoReferrers, datelist, date.today())
+
 # l = flickr.photosets.getList user_id
 # for all in l
 #    getPhotosetStats
@@ -445,7 +559,13 @@ start = time.time()
 #    if flickr.collections.getTree(next)..:
 # df2 = _get_domains(flickr2.stats.getCollectionDomains, flickr2.stats.getCollectionReferrers, datelist, date.today())
 
-refresh_stats()
+
+#get_all_stats('2020-02-21')
+
+get_all_stats('2020-02-21')
+
+##refresh_stats()
+
 #dlist = get_saved_stats()
 #get_domains(dlist, dlist[0])
 
