@@ -113,6 +113,8 @@ def get_photo_stats(dt):
 
     df_popular = df_popular[['id', 'title', 'stats']]
     df_stats = pd.DataFrame(df_popular['stats'].values.tolist())
+    #df_popular.drop('stats', axis=1, inplace=True)
+    #df_popular = df_popular.merge(df_stats,on='id')
 
     df_popular['views'] = df_stats['views']
     df_popular['favorites'] = df_stats['favorites']
@@ -147,12 +149,14 @@ def get_set_stats(dt):
     df_setstats = pd.DataFrame()
     for setid in df_sets['id']:
         ss = flickr2.stats.getPhotosetStats(photoset_id=setid, date=dt)
-        df_setstats = df_setstats.append(pd.DataFrame([ {'date': dt, 'id': setid, 'views': ss['stats']['views'], 'comments': ss['stats']['comments']}]))
+        df_setstats = df_setstats.append(pd.DataFrame([ {'date': dt, 'views': ss['stats']['views'], 'comments': ss['stats']['comments']}]))
 
     sets_domain_stats = _get_domains(flickr2.stats.getPhotosetDomains, flickr2.stats.getPhotosetReferrers, pd.date_range(dt, periods=1).tolist(), None)
     #df_sets['views'] = df_setstats['views']
     #df_sets['comments'] = df_setstats['comments']
-    # df_sets= df_sets.join(df_setstats, on=['id'])
+    #df_sets["id"] = df_sets["id"].astype('int64')
+    #df_setstats["id"] = df_setstats["id"].astype('int64')
+    df_sets = df_sets.join(df_setstats.reset_index(drop=True))
     print(df_setstats)
     return (df_sets, sets_domain_stats)
 
@@ -173,17 +177,20 @@ def get_collection_stats(dt):
 
     ## drop unecessary columns
     df_cols = df_cols[['id', 'title']]
+    df_colstats = pd.DataFrame()
 
     for colid in df_cols['id']:
         try:
-            cs = flickr2.stats.getCollectionStats(collection_id=colid, date=dt)
+            realid = colid[colid.find('-')+1:]
+            cs = flickr2.stats.getCollectionStats(collection_id=realid, date=dt)
         except flickrapi.exceptions.FlickrError:
             print(flickrapi.exceptions.FlickrError)
-        #df_setstats = df_setstats.append(pd.DataFrame([ {'date': dt, 'id': setid, 'views': ss['stats']['views'], 'comments': ss['stats']['comments']}]))
+        df_colstats = df_colstats.append(pd.DataFrame([{'date': dt, 'id': colid, 'views': cs['stats']['views'],
+                                                        'title': df_cols.loc[df_cols['id'] == colid]['title'][0]}]))
 
     cols_domain_stats = _get_domains(flickr2.stats.getCollectionDomains, flickr2.stats.getCollectionReferrers, pd.date_range(dt, periods=1).tolist(), None)
-    print(df_cols)
-    return (df_cols, cols_domain_stats)
+    print(df_colstats)
+    return (df_colstats, cols_domain_stats)
 
 def get_stream_stats(dt):
 
@@ -562,7 +569,8 @@ start = time.time()
 
 #get_all_stats('2020-02-21')
 
-get_all_stats('2020-02-21')
+# get_collection_stats('2020-02-23')
+get_all_stats('2020-02-05')
 
 ##refresh_stats()
 
