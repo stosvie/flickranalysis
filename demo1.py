@@ -10,6 +10,8 @@ import flickrapi
 import pandas as pd
 import numpy as np
 import sqlalchemy as sa
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql import text
 import webbrowser
 
 def calldb(data, table_name):
@@ -44,6 +46,33 @@ def delete_stats_from_date(livedate):
     finally:
         connection.close()
 
+def _delete_stats_from_date(dt):
+    name = 'stats_photos'
+
+    connecting_string = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:woo.database.windows.net,1433;Database=BYWS;Uid=boss;Pwd=s7#3QzOsB$J*^v3;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;'
+    params = parse.quote_plus(connecting_string)
+
+    engine = sa.create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
+    query = """
+                    IF OBJECT_ID('dbo.{}') IS NOT NULL 
+                    delete from dbo.{} where statdate = CAST( ? AS DATE) AND userid = ?; 
+                    """.format(name, name)
+    #
+    connection = engine.connect()
+    params = (dt, myuserid)
+
+    trans = connection.begin()
+    try:
+        print(query)
+        res = connection.execute(query, params)
+        print(res.rowcount)
+        trans.commit()
+    except:
+        trans.rollback()
+        raise
+    finally:
+        connection.close()
+
 def mark_date_complete(loaddate):
     connecting_string = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:woo.database.windows.net,1433;Database=BYWS;Uid=boss;Pwd=s7#3QzOsB$J*^v3;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;'
     params = parse.quote_plus(connecting_string)
@@ -56,7 +85,7 @@ def mark_date_complete(loaddate):
     else:
         new_state = 'frozen'
 
-    query = "insert into dbo.stats_status (statdate,stats_state)\
+    query = "insert into dbo.stats_status (stats_date,stats_state)\
         VALUES ('{}','{}')".format(loaddate, new_state)
 
     trans = connection.begin()
@@ -85,7 +114,7 @@ def get_saved_stats():
     engine = sa.create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
     connection = engine.connect()
     # query = "SELECT * FROM dbo.photo_faves WHERE photo_id = '" + str(pid) + "'"
-    query = "select max(statdate)  as stats_date,stats_state from dbo.stats_status group by stats_state \
+    query = "select max(stats_date)  as stats_date,stats_state from dbo.stats_status group by stats_state \
             union select  cast(getdate() as date) as  statdate, 'today' as stats_state"
 
     #union select  '2020-02-14' as  statdate, 'live' as stats_state\
@@ -97,7 +126,7 @@ def get_saved_stats():
 
     foo = df[df.stats_state.eq('frozen')]['stats_date']
     t = date.today()
-    bar = pd.date_range(start=livedate.date(), end=date.today()).tolist()
+    bar = pd.date_range(start=livedate, end=date.today()).tolist()
 
     return bar
     # ndf = df[df['favedate'] > str(1498608604)]
@@ -123,6 +152,8 @@ def get_photo_stats(dt):
     df_popular['total_favorites'] = df_stats['total_favorites']
     df_popular['total_comments'] = df_stats['total_comments']
     df_popular.drop('stats', axis=1, inplace=True)
+    dt_list = [dt for i in range(df_popular.index.size)]
+    df_popular['statdate'] = dt_list
 
     photo_domain_stats = _get_domains(flickr2.stats.getPhotoDomains, flickr2.stats.getPhotoReferrers, pd.date_range(dt, periods=1).tolist(), None)
     print(df_popular)
@@ -215,12 +246,83 @@ def get_totals_stats(dt):
     return df_totals
 
 def get_all_stats(dt):
+    writelst = []
+
     df_photo_stats = get_photo_stats(dt)
+    df_photo_stats[0].name = 'stats_photos'
+    df_photo_stats[1].name = 'stats_photos_domains'
+    writelst.append(df_photo_stats[0])
+    writelst.append(df_photo_stats[1])
+
     df_totals = get_totals_stats(dt)
+    df_totals.name = 'stats_totals'
+    writelst.append(df_totals)
+
     df_streams = get_stream_stats(dt)
+    df_streams[0].name = 'stats_streams'
+    df_streams[1].name = 'stats_stream_domains'
+    writelst.append(df_streams[0])
+    writelst.append(df_streams[1])
+
     df_sets = get_set_stats(dt)
+    df_sets[0].name = 'stats_sets'
+    df_sets[1].name = 'stats_sets_domains'
+    writelst.append(df_sets[0])
+    writelst.append(df_sets[1])
+
     df_cols = get_collection_stats(dt)
+    df_cols[0].name = 'stats_collections'
+    df_cols[1].name = 'stats_collections_domains'
+    writelst.append(df_cols[0])
+    writelst.append(df_cols[1])
+
+
+    for i in writelst:
+        write_df(dt, i)
+
     print('retrieved all stats')
+
+def write_df(dt, i):
+
+    if i.shape[0] > 0:
+
+        connecting_string = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:woo.database.windows.net,1433;Database=BYWS;Uid=boss;Pwd=s7#3QzOsB$J*^v3;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;'
+        params = parse.quote_plus(connecting_string)
+
+        engine = sa.create_engine("mssql+pyodbc:///?odbc_connect=%s" % params, fast_executemany=True)
+        connection = engine.connect()
+
+        # session = sessionmaker(bind=engine)
+
+        # new session.   no connections are in use.
+        #session = session()
+        trans = connection.begin()
+        try:
+
+            query = """
+                    IF OBJECT_ID('dbo.{}') IS NOT NULL 
+                    delete from dbo.{} where statdate = CAST( ? AS DATE) AND userid = ?; 
+                    """.format(i.name, i.name)
+            #connection = engine.connect()
+            params = ( dt, myuserid )
+            print(query)
+            res = connection.execute(query, params )
+            print(res.rowcount)
+            dt_list = [dt for i in range(i.index.size)]
+            user_list = [myuserid for i in range(i.index.size)]
+            i['statdate'] = dt_list
+            i['statdate'] = pd.to_datetime(i['statdate'])
+            i['userid'] = user_list
+            print(i.shape[0])
+            i.to_sql(i.name, con=engine, if_exists='append', chunksize=1000)
+
+            trans.commit()
+
+        except:
+            trans.rollback()
+            raise
+        finally:
+            connection.close()
 
 def test_photos(fobj, myuserid):
 
@@ -570,9 +672,10 @@ start = time.time()
 #get_all_stats('2020-02-21')
 
 # get_collection_stats('2020-02-23')
-get_all_stats('2020-02-05')
+get_all_stats('2020-02-23')
+#_delete_stats_from_date('2020-02-19')
 
-##refresh_stats()
+#refresh_stats()
 
 #dlist = get_saved_stats()
 #get_domains(dlist, dlist[0])
