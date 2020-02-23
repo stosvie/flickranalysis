@@ -345,6 +345,7 @@ def test_photos(fobj, myuserid):
         # df_dates = pd.DataFrame(i1['photo'])['dates'] # ['posted']
         # pd.DataFrame(i1[('id','photo')])['dates']  # ['posted']
         dfx = pd.DataFrame(i1['photo'])
+        ### TODO This code snipet needs to be used in get_photos_stats when flattening the stats sublevel
         df_dates = df_dates.append(dfx.loc[['lastupdate'], ['id', 'dates']].append(dfx.loc[['posted', 'taken'], ['id', 'dates']]))
         # df_alldates = df_alldates.append(df_dates)
         # df_url = pd.DataFrame(i1['photo'])['urls']['url']
@@ -647,6 +648,11 @@ if not flickr2.token_valid(perms='read'):
 #       * more than 50 likes limit
 #       groups from getAllContexts
 #       * recentlyUpdate also need oAuth
+#       * logging (db and local)
+#       * timings
+#       * finaly add class wrapper and modualarize
+#       * reload all photos
+#       * pattern reuse
 
 start = time.time()
 #dt = date.today()
@@ -669,13 +675,12 @@ start = time.time()
 # df2 = _get_domains(flickr2.stats.getCollectionDomains, flickr2.stats.getCollectionReferrers, datelist, date.today())
 
 
-#get_all_stats('2020-02-21')
-
+# get_all_stats('2020-02-21')
+# get_all_stats('2020-02-23')
 # get_collection_stats('2020-02-23')
-get_all_stats('2020-02-23')
 #_delete_stats_from_date('2020-02-19')
 
-#refresh_stats()
+refresh_stats()
 
 #dlist = get_saved_stats()
 #get_domains(dlist, dlist[0])
