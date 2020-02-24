@@ -348,24 +348,18 @@ def close_date(dt):
     connection.autoCommit = True
     trans = connection.begin()
 
-
-
     try:
         ### TODO replace with SP
         query = "EXEC fs.[CloseStatLoadForDate] @dt = ? "
 
-        realdate = parser.parse(dt)
-        connection.execute( query, realdate )
-        # connection.execute("EXEC fs.GetDatesToLoad")
-        # fetch result parameters
-        #results = list(cursor.fetchall())
+
+        connection.execute( query, dt )
         trans.commit()
-
-
         print("closed date {}".format(dt))
 
     except:
         raise
+        trans.rollback()
     finally:
         connection.close()
 
@@ -546,6 +540,10 @@ def _domains_helper(dom_func, referrers_func, dt, pg):
                 final_df = final_df.append(df_refs)
 
             final_outer = final_outer.append(final_df)
+
+    if not 'searchterm' in final_outer.columns:
+        searchterm = [None for i in range(final_outer.index.size)]
+        final_outer['searchterm'] = searchterm
 
     return final_outer, popular['domains']['pages'], popular['domains']['page']
 
@@ -745,8 +743,9 @@ start = time.time()
 # next = flickr.collections.getTree(0)
 #    if flickr.collections.getTree(next)..:
 # df2 = _get_domains(flickr2.stats.getCollectionDomains, flickr2.stats.getCollectionReferrers, datelist, date.today())
-# get_stats_batch()
-close_date('2020-02-13')
+get_stats_batch()
+
+# close_date('2020-02-13')
 #get_photo_stats('2020-02-21')
 # get_all_stats('2020-02-21')
 # get_all_stats('2020-02-23')
