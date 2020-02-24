@@ -142,16 +142,20 @@ def get_photo_stats(dt):
 
     df_popular = df_popular[['id', 'title', 'stats']]
     df_stats = pd.DataFrame(df_popular['stats'].values.tolist())
-    #df_popular.drop('stats', axis=1, inplace=True)
-    #df_popular = df_popular.merge(df_stats,on='id')
-
-    df_popular['views'] = df_stats['views']
-    df_popular['favorites'] = df_stats['favorites']
-    df_popular['comments'] = df_stats['comments']
-    df_popular['total_views'] = df_stats['total_views']
-    df_popular['total_favorites'] = df_stats['total_favorites']
-    df_popular['total_comments'] = df_stats['total_comments']
+    df_popular.reset_index(inplace=True,drop=True)
+    df_popular = df_popular.join(df_stats)
     df_popular.drop('stats', axis=1, inplace=True)
+
+    # df_popular.drop('stats', axis=1, inplace=True)
+    # df_popular = df_popular.merge(df_stats,on='id')
+
+    # df_popular['views'] = df_stats['views']
+    # df_popular['favorites'] = df_stats['favorites']
+    # df_popular['comments'] = df_stats['comments']
+    # df_popular['total_views'] = df_stats['total_views']
+    # df_popular['total_favorites'] = df_stats['total_favorites']
+    # df_popular['total_comments'] = df_stats['total_comments']
+
     dt_list = [dt for i in range(df_popular.index.size)]
     df_popular['statdate'] = dt_list
 
@@ -674,13 +678,13 @@ start = time.time()
 #    if flickr.collections.getTree(next)..:
 # df2 = _get_domains(flickr2.stats.getCollectionDomains, flickr2.stats.getCollectionReferrers, datelist, date.today())
 
-
+get_photo_stats('2020-02-21')
 # get_all_stats('2020-02-21')
 # get_all_stats('2020-02-23')
 # get_collection_stats('2020-02-23')
 #_delete_stats_from_date('2020-02-19')
 
-refresh_stats()
+#refresh_stats()
 
 #dlist = get_saved_stats()
 #get_domains(dlist, dlist[0])
