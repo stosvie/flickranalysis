@@ -13,6 +13,8 @@ import sqlalchemy as sa
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import text
 import webbrowser
+from dateutil import parser
+
 
 def calldb(data, table_name):
 
@@ -33,7 +35,7 @@ def delete_stats_from_date(livedate):
     query = "\
                     delete from dbo.photo_stats_domains where statdate >= '{}';\
                     delete from dbo.photo_stats where statdate >= '{}';\
-                    delete from dbo.stats_status where statdate >= '{}';".format(livedate.date(), livedate.date(),livedate.date())
+                    delete from dbo.stats_status where stats_date >= '{}';".format(livedate.date(), livedate.date(),livedate.date())
 
     trans = connection.begin()
     try:
@@ -99,6 +101,7 @@ def mark_date_complete(loaddate):
     finally:
         connection.close()
 
+# working version, do not delete until replacement is in place
 def refresh_stats():
     dlist = get_saved_stats()
     get_stats(dlist, dlist[0])
@@ -302,15 +305,15 @@ def write_df(dt, i):
         #session = session()
         trans = connection.begin()
         try:
-
+            ### TODO replace with SP
             query = """
-                    IF OBJECT_ID('dbo.{}') IS NOT NULL 
-                    delete from dbo.{} where statdate = CAST( ? AS DATE) AND userid = ?; 
+                    IF OBJECT_ID('fs.{}') IS NOT NULL 
+                    delete from fs.{} where statdate = CAST( ? AS DATE) AND userid = ?; 
                     """.format(i.name, i.name)
             #connection = engine.connect()
             params = ( dt, myuserid )
             print(query)
-            res = connection.execute(query, params )
+            res = connection.execute(query, params, schema='fs')
             print(res.rowcount)
             dt_list = [dt for i in range(i.index.size)]
             user_list = [myuserid for i in range(i.index.size)]
@@ -318,7 +321,7 @@ def write_df(dt, i):
             i['statdate'] = pd.to_datetime(i['statdate'])
             i['userid'] = user_list
             print(i.shape[0])
-            i.to_sql(i.name, con=engine, if_exists='append', chunksize=1000)
+            i.to_sql(i.name, con=engine, if_exists='append', chunksize=1000,schema='fs')
 
             trans.commit()
 
@@ -327,6 +330,71 @@ def write_df(dt, i):
             raise
         finally:
             connection.close()
+
+def get_stats_batch():
+
+    ls = get_dates()
+    for dt in ls:
+        get_all_stats(dt[0])
+        close_date(dt[0])
+
+def close_date(dt):
+    connecting_string = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:woo.database.windows.net,1433;Database=BYWS;Uid=boss;Pwd=s7#3QzOsB$J*^v3;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;'
+    params = parse.quote_plus(connecting_string)
+
+    engine = sa.create_engine("mssql+pyodbc:///?odbc_connect=%s" % params, fast_executemany=True)
+
+    connection = engine.connect()
+    connection.autoCommit = True
+    trans = connection.begin()
+
+
+
+    try:
+        ### TODO replace with SP
+        query = "EXEC fs.[CloseStatLoadForDate] @dt = ? "
+
+        realdate = parser.parse(dt)
+        connection.execute( query, realdate )
+        # connection.execute("EXEC fs.GetDatesToLoad")
+        # fetch result parameters
+        #results = list(cursor.fetchall())
+        trans.commit()
+
+
+        print("closed date {}".format(dt))
+
+    except:
+        raise
+    finally:
+        connection.close()
+
+
+def get_dates():
+
+    connecting_string = 'Driver={ODBC Driver 17 for SQL Server};Server=tcp:woo.database.windows.net,1433;Database=BYWS;Uid=boss;Pwd=s7#3QzOsB$J*^v3;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;'
+    params = parse.quote_plus(connecting_string)
+
+    engine = sa.create_engine("mssql+pyodbc:///?odbc_connect=%s" % params, fast_executemany=True)
+
+    connection = engine.raw_connection()
+
+
+    try:
+        ### TODO replace with SP
+        query = "EXEC fs.GetDatesToLoad"
+        #cursor = connection.cursor()
+        cursor = connection.execute("EXEC fs.GetDatesToLoad")
+        # fetch result parameters
+        results = list(cursor.fetchall())
+        cursor.close()
+        print()
+
+    except:
+        raise
+    finally:
+        connection.close()
+    return results
 
 def test_photos(fobj, myuserid):
 
@@ -677,8 +745,9 @@ start = time.time()
 # next = flickr.collections.getTree(0)
 #    if flickr.collections.getTree(next)..:
 # df2 = _get_domains(flickr2.stats.getCollectionDomains, flickr2.stats.getCollectionReferrers, datelist, date.today())
-
-get_photo_stats('2020-02-21')
+# get_stats_batch()
+close_date('2020-02-13')
+#get_photo_stats('2020-02-21')
 # get_all_stats('2020-02-21')
 # get_all_stats('2020-02-23')
 # get_collection_stats('2020-02-23')
