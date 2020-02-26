@@ -92,6 +92,41 @@ class flickrtodb:
         finally:
             return results
 
+    def _get_photo_domains(self, df, dom_func, referrers_func,dt):
+
+        df_domains = pd.DataFrame()
+        for ph in df:
+            popular = dom_func(date=dt, per_page=100, page=1, photo_id=ph)
+
+            if int(popular['domains']['pages']) > 0:
+
+                print("""Photo with id {} \
+                                reports total of {} pages \
+                                and has a list of {} domains,\
+                                total is {}""".format(ph,
+                                                    popular['domains']['pages'],
+                                                    len(popular['domains']['domain']),
+                                                    popular['domains']['total']))
+                df_domains = df_domains.append(pd.DataFrame(popular['domains']['domain']))
+                dt_domain = [dt for i in range(df_domains.index.size)]
+                df_domains['statdate'] = dt_domain
+                ph_domain = [ph for i in range(df_domains.index.size)]
+                df_domains['photoid'] = ph_domain
+                for dom in df_domains['name']:
+                    refs = referrers_func(date=dt, photo_id = ph, domain=dom, per_page=100, page=1)
+                    df_refs = pd.DataFrame(refs['domain']['referrer'])
+
+                while popular['domains']['pages'] - popular['domains']['page'] > 0:
+                    popular = dom_func(date=dt, per_page=100, page=popular['domains']['page']+1, photo_id=ph)
+                    df_domains = df_domains.append(pd.DataFrame(popular['domains']['domain']))
+                    dt_domain = [dt for i in range(df_domains.index.size)]
+                    df_domains['statdate'] = dt_domain
+                    ph_domain = [ph for i in range(df_domains.index.size)]
+                    df_domains['photoid'] = ph_domain
+
+
+        return df_domains
+
     def _get_domains(self, dom_func, referrers_func, d):
         res = self._domains_helper(dom_func, referrers_func, d, 1)
         final_df = res[0]
@@ -150,6 +185,9 @@ class flickrtodb:
 
         photo_domain_stats = self._get_domains(self._flickr.stats.getPhotoDomains,
                                                self._flickr.stats.getPhotoReferrers, dt)
+        t = df_popular['id']
+        retval = self._get_photo_domains(t, self._flickr.stats.getPhotoDomains,
+                                                 self._flickr.stats.getPhotoReferrers, dt)
 
         print(df_popular)
         return (df_popular, photo_domain_stats )
