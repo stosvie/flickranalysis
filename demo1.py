@@ -743,10 +743,10 @@ start = time.time()
 # next = flickr.collections.getTree(0)
 #    if flickr.collections.getTree(next)..:
 # df2 = _get_domains(flickr2.stats.getCollectionDomains, flickr2.stats.getCollectionReferrers, datelist, date.today())
-get_stats_batch()
+#get_stats_batch()
 
 # close_date('2020-02-13')
-#get_photo_stats('2020-02-21')
+get_photo_stats('2020-02-21')
 # get_all_stats('2020-02-21')
 # get_all_stats('2020-02-23')
 # get_collection_stats('2020-02-23')
