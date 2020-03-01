@@ -164,6 +164,8 @@ def get_photo_stats(dt):
 
     photo_domain_stats = _get_domains(flickr2.stats.getPhotoDomains, flickr2.stats.getPhotoReferrers, pd.date_range(dt, periods=1).tolist(), None)
     print(df_popular)
+    df_popular.name = 'stats_photos'
+    photo_domain_stats.name = 'stats_photos_domains'
     return (df_popular, photo_domain_stats )
 
 def get_set_stats(dt):
@@ -196,6 +198,8 @@ def get_set_stats(dt):
     #df_setstats["id"] = df_setstats["id"].astype('int64')
     df_sets = df_sets.join(df_setstats.reset_index(drop=True))
     print(df_setstats)
+    df_setstats.name = 'stats_sets'
+    sets_domain_stats.name = 'stats_sets_domains'
     return (df_sets, sets_domain_stats)
 
 def parse_col_tree(colid,df_cols):
@@ -228,6 +232,8 @@ def get_collection_stats(dt):
 
     cols_domain_stats = _get_domains(flickr2.stats.getCollectionDomains, flickr2.stats.getCollectionReferrers, pd.date_range(dt, periods=1).tolist(), None)
     print(df_colstats)
+    df_colstats.name = 'stats_collections'
+    cols_domain_stats.name = 'stats_collections_domains'
     return (df_colstats, cols_domain_stats)
 
 def get_stream_stats(dt):
@@ -237,6 +243,8 @@ def get_stream_stats(dt):
 
     stream_domain_stats = _get_domains(flickr2.stats.getPhotostreamDomains, flickr2.stats.getPhotostreamReferrers, pd.date_range(dt, periods=1).tolist(), None)
     print(stream_domain_stats)
+    df_streams.name = 'stats_streams'
+    stream_domain_stats.name = 'stats_stream_domains'
     return (df_streams, stream_domain_stats)
 
 def get_totals_stats(dt):
@@ -250,39 +258,17 @@ def get_totals_stats(dt):
                                     'collections': totals['stats']['collections']['views']
                                 }])
     print(df_totals)
+    df_totals.name = 'stats_totals'
     return df_totals
 
 def get_all_stats(dt):
     writelst = []
 
-    df_photo_stats = get_photo_stats(dt)
-    df_photo_stats[0].name = 'stats_photos'
-    df_photo_stats[1].name = 'stats_photos_domains'
-    writelst.append(df_photo_stats[0])
-    writelst.append(df_photo_stats[1])
-
-    df_totals = get_totals_stats(dt)
-    df_totals.name = 'stats_totals'
-    writelst.append(df_totals)
-
-    df_streams = get_stream_stats(dt)
-    df_streams[0].name = 'stats_streams'
-    df_streams[1].name = 'stats_stream_domains'
-    writelst.append(df_streams[0])
-    writelst.append(df_streams[1])
-
-    df_sets = get_set_stats(dt)
-    df_sets[0].name = 'stats_sets'
-    df_sets[1].name = 'stats_sets_domains'
-    writelst.append(df_sets[0])
-    writelst.append(df_sets[1])
-
-    df_cols = get_collection_stats(dt)
-    df_cols[0].name = 'stats_collections'
-    df_cols[1].name = 'stats_collections_domains'
-    writelst.append(df_cols[0])
-    writelst.append(df_cols[1])
-
+    writelst.extend(get_photo_stats(dt))
+    writelst.append(get_totals_stats(dt))
+    writelst.extend(get_stream_stats(dt))
+    writelst.extend(get_set_stats(dt))
+    writelst.extend(get_collection_stats(dt))
 
     for i in writelst:
         write_df(dt, i)
@@ -743,10 +729,10 @@ start = time.time()
 # next = flickr.collections.getTree(0)
 #    if flickr.collections.getTree(next)..:
 # df2 = _get_domains(flickr2.stats.getCollectionDomains, flickr2.stats.getCollectionReferrers, datelist, date.today())
-#get_stats_batch()
+get_stats_batch()
 
 # close_date('2020-02-13')
-get_photo_stats('2020-02-21')
+# get_photo_stats('2020-02-21')
 # get_all_stats('2020-02-21')
 # get_all_stats('2020-02-23')
 # get_collection_stats('2020-02-23')
