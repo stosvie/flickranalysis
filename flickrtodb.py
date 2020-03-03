@@ -31,6 +31,8 @@ class db:
 
     def write_df(self, dt, df, userid):
 
+        ### TODO rewrite so that close date is called only once and trasaction goes over the
+        ### whole list of dataframes to write
         if df.shape[0] > 0:
 
             try:
@@ -266,9 +268,22 @@ class FlickrToDb:
                                    'galleries': totals['stats']['galleries']['views'],
                                    'collections': totals['stats']['collections']['views']
                                    }])
-        #print(df_totals)
         df_totals.name = 'stats_totals'
-        return self._add_common_cols(df_totals, dt)
+        # all time
+
+        totals = self._flickr.stats.getTotalViews()
+        df_totals_alltime = pd.DataFrame([{'date': dt,
+                                   'total': totals['stats']['total']['views'],
+                                   'photos': totals['stats']['photos']['views'],
+                                   'photostream': totals['stats']['photostream']['views'],
+                                   'sets': totals['stats']['sets']['views'],
+                                   'galleries': totals['stats']['galleries']['views'],
+                                   'collections': totals['stats']['collections']['views']
+                                   }])
+
+        #print(df_totals)
+        df_totals_alltime.name = 'stats_totals_alltime'
+        return self._add_common_cols(df_totals, dt), self._add_common_cols(df_totals_alltime, dt)
 
     def get_set_stats(self, dt):
 
@@ -345,7 +360,7 @@ class FlickrToDb:
         ### TODO need a decorator to get fine-grained timing
         start = time.time()
         writelst.extend(self.get_photo_stats(dt))
-        writelst.append(self.get_totals_stats(dt))
+        writelst.extend(self.get_totals_stats(dt))
         writelst.extend(self.get_stream_stats(dt))
         writelst.extend(self.get_set_stats(dt))
         writelst.extend(self.get_collection_stats(dt))
@@ -374,7 +389,7 @@ try:
     # new_state = lambda x: 'live' if (x == date.today()) else 'frozen'
     # print(new_state(datetime.date(2020,2,28)))
 
-    # fo.get_all_stats('2020-03-01')
+    # fo.get_totals_stats('2020-03-01')
     fo.get_stats_batch()
     print(f'Time: {time.time() - start}')
 except flickrapi.FlickrError as err:
