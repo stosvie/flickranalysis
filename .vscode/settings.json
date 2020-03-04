@@ -1,3 +1,5 @@
 {
-    "python.pythonPath": "C:\\Users\\srdja\\Miniconda3\\python.exe"
+    "python.pythonPath": "C:\\Users\\srdja\\Miniconda3\\python.exe",
+    "appService.defaultWebAppToDeploy": "/subscriptions/61394917-e677-4f18-8fd6-b8a05ac6a014/resourceGroups/CustEntry/providers/Microsoft.Web/sites/fa-sync",
+    "appService.deploySubpath": ""
 }
